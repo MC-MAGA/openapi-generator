@@ -75,6 +75,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
     protected static final String NET_60_OR_LATER = "net60OrLater";
     protected static final String NET_70_OR_LATER = "net70OrLater";
     protected static final String NET_80_OR_LATER = "net80OrLater";
+    protected static final String NET_90_OR_LATER = "net90OrLater";
 
     @SuppressWarnings("hiding")
     private final Logger LOGGER = LoggerFactory.getLogger(CSharpClientCodegen.class);
@@ -87,9 +88,8 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
             FrameworkStrategy.NETSTANDARD_2_1,
             FrameworkStrategy.NETFRAMEWORK_4_7,
             FrameworkStrategy.NETFRAMEWORK_4_8,
-            FrameworkStrategy.NET_6_0,
-            FrameworkStrategy.NET_7_0,
-            FrameworkStrategy.NET_8_0
+            FrameworkStrategy.NET_8_0,
+            FrameworkStrategy.NET_9_0
     );
     private static FrameworkStrategy latestFramework = frameworkStrategies.get(frameworkStrategies.size() - 1);
     protected final Map<String, String> frameworks;
@@ -111,6 +111,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
     protected boolean netStandard = Boolean.FALSE;
     protected boolean supportsFileParameters = Boolean.TRUE;
     protected boolean supportsDateOnly = Boolean.FALSE;
+    protected boolean useIntForTimeout = Boolean.FALSE;
 
     @Setter protected boolean validatable = Boolean.TRUE;
     @Setter protected boolean equatable = Boolean.FALSE;
@@ -120,13 +121,15 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
 
     private static final String OPERATION_PARAMETER_SORTING_KEY = "operationParameterSorting";
     private static final String MODEL_PROPERTY_SORTING_KEY = "modelPropertySorting";
+    private static final String USE_INT_FOR_TIMEOUT = "useIntForTimeout";
+
     enum SortingMethod {
         DEFAULT,
         ALPHABETICAL,
         LEGACY
     }
-    private SortingMethod operationParameterSorting = SortingMethod.LEGACY;
-    private SortingMethod modelPropertySorting = SortingMethod.LEGACY;
+    private SortingMethod operationParameterSorting = SortingMethod.DEFAULT;
+    private SortingMethod modelPropertySorting = SortingMethod.DEFAULT;
 
     protected boolean caseInsensitiveResponseHeaders = Boolean.FALSE;
     protected String releaseNote = "Minor update";
@@ -229,12 +232,16 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
                 null);
 
         addOption(CSharpClientCodegen.OPERATION_PARAMETER_SORTING_KEY,
-                "One of legacy, alphabetical, default (only `generichost` library supports this option).",
+                "One of legacy, alphabetical, default.",
                 this.operationParameterSorting.toString().toLowerCase(Locale.ROOT));
 
         addOption(CSharpClientCodegen.MODEL_PROPERTY_SORTING_KEY,
-                "One of legacy, alphabetical, default (only `generichost` library supports this option).",
+                "One of legacy, alphabetical, default.",
                 this.modelPropertySorting.toString().toLowerCase(Locale.ROOT));
+
+        addOption(CSharpClientCodegen.USE_INT_FOR_TIMEOUT,
+                "Use int for Timeout (fall back to v7.9.0 templates). This option (for restsharp only) will be deprecated so please migrated to TimeSpan instead.",
+                String.valueOf(this.useIntForTimeout));
 
         CliOption framework = new CliOption(
                 CodegenConstants.DOTNET_FRAMEWORK,
@@ -369,7 +376,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
     protected Set<String> getNullableTypes() {
         return GENERICHOST.equals(getLibrary())
                 ? super.getNullableTypes()
-                : new HashSet<>(Arrays.asList("decimal", "bool", "int", "uint", "long", "ulong", "float", "double", "DateTime", "DateTimeOffset", "Guid"));
+                : new HashSet<>(Arrays.asList("decimal", "bool", "int", "uint", "long", "ulong", "float", "double", "DateTime", "DateOnly", "DateTimeOffset", "Guid"));
     }
 
     @Override
@@ -425,6 +432,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
     public CodegenModel fromModel(String name, Schema model) {
         Map<String, Schema> allDefinitions = ModelUtils.getSchemas(this.openAPI);
         CodegenModel codegenModel = super.fromModel(name, model);
+        setEnumDiscriminatorDefaultValue(codegenModel);
         if (allDefinitions != null && codegenModel != null && codegenModel.parent != null) {
             final Schema<?> parentModel = allDefinitions.get(toModelName(codegenModel.parent));
             if (parentModel != null) {
@@ -468,10 +476,8 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
             }
         }
 
-        // avoid breaking changes
-        if (GENERICHOST.equals(getLibrary()) && codegenModel != null) {
-
-            if (this.modelPropertySorting == SortingMethod.LEGACY) {
+        if (codegenModel != null) {
+            if (this.modelPropertySorting == SortingMethod.ALPHABETICAL) {
                 Collections.sort(codegenModel.vars, propertyComparatorByName);
                 Collections.sort(codegenModel.allVars, propertyComparatorByName);
                 Collections.sort(codegenModel.requiredVars, propertyComparatorByName);
@@ -479,17 +485,11 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
                 Collections.sort(codegenModel.readOnlyVars, propertyComparatorByName);
                 Collections.sort(codegenModel.readWriteVars, propertyComparatorByName);
                 Collections.sort(codegenModel.parentVars, propertyComparatorByName);
-
-                Collections.sort(codegenModel.vars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.allVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.requiredVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.optionalVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.readOnlyVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.readWriteVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
-                Collections.sort(codegenModel.parentVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
             }
-            else {
-                if (this.modelPropertySorting == SortingMethod.ALPHABETICAL) {
+
+            if (GENERICHOST.equals(getLibrary())) {
+
+                if (this.modelPropertySorting == SortingMethod.LEGACY) {
                     Collections.sort(codegenModel.vars, propertyComparatorByName);
                     Collections.sort(codegenModel.allVars, propertyComparatorByName);
                     Collections.sort(codegenModel.requiredVars, propertyComparatorByName);
@@ -497,16 +497,27 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
                     Collections.sort(codegenModel.readOnlyVars, propertyComparatorByName);
                     Collections.sort(codegenModel.readWriteVars, propertyComparatorByName);
                     Collections.sort(codegenModel.parentVars, propertyComparatorByName);
-                }
 
-                Collections.sort(codegenModel.vars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.allVars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.requiredVars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.optionalVars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.readOnlyVars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.readWriteVars, propertyComparatorByNotNullableRequiredNoDefault);
-                Collections.sort(codegenModel.parentVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.vars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.allVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.requiredVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.optionalVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.readOnlyVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.readWriteVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                    Collections.sort(codegenModel.parentVars, propertyComparatorByNotNullableRequiredNoDefaultLegacy);
+                }
+                else {
+                    Collections.sort(codegenModel.vars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.allVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.requiredVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.optionalVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.readOnlyVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.readWriteVars, propertyComparatorByNotNullableRequiredNoDefault);
+                    Collections.sort(codegenModel.parentVars, propertyComparatorByNotNullableRequiredNoDefault);
+                }
             }
+        } else {
+            SortModelPropertiesByRequiredFlag(codegenModel);
         }
 
         return codegenModel;
@@ -745,8 +756,6 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
         if (GENERICHOST.equals(getLibrary())) {
             setLibrary(GENERICHOST);
             additionalProperties.put("useGenericHost", true);
-            // all c# libraries should be doing this, but we only do it here to avoid breaking changes
-            this.setSortModelPropertiesByRequiredFlag(true);
         } else if (RESTSHARP.equals(getLibrary())) {
             additionalProperties.put("useRestSharp", true);
             needsCustomHttpMethod = true;
@@ -840,6 +849,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
         syncBooleanProperty(additionalProperties, "supportsFileParameters", this::setSupportsFileParameters, this.supportsFileParameters);
         syncBooleanProperty(additionalProperties, "useSourceGeneration", this::setUseSourceGeneration, this.useSourceGeneration);
         syncBooleanProperty(additionalProperties, "supportsDateOnly", this::setSupportsDateOnly, this.supportsDateOnly);
+        syncBooleanProperty(additionalProperties, "useIntForTimeout", this::setUseIntForTimeout, this.useIntForTimeout);
 
         final String testPackageName = testPackageName();
         String packageFolder = sourceFolder + File.separator + packageName;
@@ -926,61 +936,61 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
                                           List<Server> servers) {
         CodegenOperation op = super.fromOperation(path, httpMethod, operation, servers);
 
-        if (!GENERICHOST.equals(getLibrary())) {
-            return op;
+        if (this.operationParameterSorting == SortingMethod.ALPHABETICAL) {
+            Collections.sort(op.allParams, parameterComparatorByName);
+            Collections.sort(op.bodyParams, parameterComparatorByName);
+            Collections.sort(op.pathParams, parameterComparatorByName);
+            Collections.sort(op.queryParams, parameterComparatorByName);
+            Collections.sort(op.headerParams, parameterComparatorByName);
+            Collections.sort(op.implicitHeadersParams, parameterComparatorByName);
+            Collections.sort(op.formParams, parameterComparatorByName);
+            Collections.sort(op.cookieParams, parameterComparatorByName);
+            Collections.sort(op.requiredParams, parameterComparatorByName);
+            Collections.sort(op.optionalParams, parameterComparatorByName);
+            Collections.sort(op.notNullableParams, parameterComparatorByName);
         }
 
-        if (this.operationParameterSorting == SortingMethod.LEGACY) {
-            Collections.sort(op.allParams, parameterComparatorByDataType);
-            Collections.sort(op.bodyParams, parameterComparatorByDataType);
-            Collections.sort(op.pathParams, parameterComparatorByDataType);
-            Collections.sort(op.queryParams, parameterComparatorByDataType);
-            Collections.sort(op.headerParams, parameterComparatorByDataType);
-            Collections.sort(op.implicitHeadersParams, parameterComparatorByDataType);
-            Collections.sort(op.formParams, parameterComparatorByDataType);
-            Collections.sort(op.cookieParams, parameterComparatorByDataType);
-            Collections.sort(op.requiredParams, parameterComparatorByDataType);
-            Collections.sort(op.optionalParams, parameterComparatorByDataType);
-            Collections.sort(op.notNullableParams, parameterComparatorByDataType);
+        if (GENERICHOST.equals(getLibrary())) {
+            if (this.operationParameterSorting == SortingMethod.LEGACY) {
+                Collections.sort(op.allParams, parameterComparatorByDataType);
+                Collections.sort(op.bodyParams, parameterComparatorByDataType);
+                Collections.sort(op.pathParams, parameterComparatorByDataType);
+                Collections.sort(op.queryParams, parameterComparatorByDataType);
+                Collections.sort(op.headerParams, parameterComparatorByDataType);
+                Collections.sort(op.implicitHeadersParams, parameterComparatorByDataType);
+                Collections.sort(op.formParams, parameterComparatorByDataType);
+                Collections.sort(op.cookieParams, parameterComparatorByDataType);
+                Collections.sort(op.requiredParams, parameterComparatorByDataType);
+                Collections.sort(op.optionalParams, parameterComparatorByDataType);
+                Collections.sort(op.notNullableParams, parameterComparatorByDataType);
 
-            Comparator<CodegenParameter> comparator = parameterComparatorByRequired.thenComparing(parameterComparatorByDefaultValue);
-            Collections.sort(op.allParams, comparator);
-            Collections.sort(op.bodyParams, comparator);
-            Collections.sort(op.pathParams, comparator);
-            Collections.sort(op.queryParams, comparator);
-            Collections.sort(op.headerParams, comparator);
-            Collections.sort(op.implicitHeadersParams, comparator);
-            Collections.sort(op.formParams, comparator);
-            Collections.sort(op.cookieParams, comparator);
-            Collections.sort(op.requiredParams, comparator);
-            Collections.sort(op.optionalParams, comparator);
-            Collections.sort(op.notNullableParams, comparator);
-        } else {
-            if (this.operationParameterSorting == SortingMethod.ALPHABETICAL) {
-                Collections.sort(op.allParams, parameterComparatorByName);
-                Collections.sort(op.bodyParams, parameterComparatorByName);
-                Collections.sort(op.pathParams, parameterComparatorByName);
-                Collections.sort(op.queryParams, parameterComparatorByName);
-                Collections.sort(op.headerParams, parameterComparatorByName);
-                Collections.sort(op.implicitHeadersParams, parameterComparatorByName);
-                Collections.sort(op.formParams, parameterComparatorByName);
-                Collections.sort(op.cookieParams, parameterComparatorByName);
-                Collections.sort(op.requiredParams, parameterComparatorByName);
-                Collections.sort(op.optionalParams, parameterComparatorByName);
-                Collections.sort(op.notNullableParams, parameterComparatorByName);
+                Comparator<CodegenParameter> comparator = parameterComparatorByRequired.thenComparing(parameterComparatorByDefaultValue);
+                Collections.sort(op.allParams, comparator);
+                Collections.sort(op.bodyParams, comparator);
+                Collections.sort(op.pathParams, comparator);
+                Collections.sort(op.queryParams, comparator);
+                Collections.sort(op.headerParams, comparator);
+                Collections.sort(op.implicitHeadersParams, comparator);
+                Collections.sort(op.formParams, comparator);
+                Collections.sort(op.cookieParams, comparator);
+                Collections.sort(op.requiredParams, comparator);
+                Collections.sort(op.optionalParams, comparator);
+                Collections.sort(op.notNullableParams, comparator);
+            } else {
+                Collections.sort(op.allParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.bodyParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.pathParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.queryParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.headerParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.implicitHeadersParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.formParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.cookieParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.requiredParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.optionalParams, parameterComparatorByNotNullableRequiredNoDefault);
+                Collections.sort(op.notNullableParams, parameterComparatorByNotNullableRequiredNoDefault);
             }
-
-            Collections.sort(op.allParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.bodyParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.pathParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.queryParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.headerParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.implicitHeadersParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.formParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.cookieParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.requiredParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.optionalParams, parameterComparatorByNotNullableRequiredNoDefault);
-            Collections.sort(op.notNullableParams, parameterComparatorByNotNullableRequiredNoDefault);
+        } else {
+            SortParametersByRequiredFlag(op.allParams);
         }
 
         return op;
@@ -988,9 +998,22 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
 
     public void addSupportingFiles(final String clientPackageDir, final String packageFolder,
                                    final AtomicReference<Boolean> excludeTests, final String testPackageFolder, final String testPackageName, final String modelPackageDir, final String authPackageDir) {
+        if (RESTSHARP.equals(getLibrary())) { // restsharp
+            if (useIntForTimeout) { // option to fall back to int for Timeout using v7.9.0 template
+                supportingFiles.add(new SupportingFile("ApiClient.v790.mustache", clientPackageDir, "ApiClient.cs"));
+                supportingFiles.add(new SupportingFile("IReadableConfiguration.v790.mustache", clientPackageDir, "IReadableConfiguration.cs"));
+                supportingFiles.add(new SupportingFile("Configuration.v790.mustache", clientPackageDir, "Configuration.cs"));
+            } else {
+                supportingFiles.add(new SupportingFile("ApiClient.mustache", clientPackageDir, "ApiClient.cs"));
+                supportingFiles.add(new SupportingFile("IReadableConfiguration.mustache", clientPackageDir, "IReadableConfiguration.cs"));
+                supportingFiles.add(new SupportingFile("Configuration.mustache", clientPackageDir, "Configuration.cs"));
+            }
+        } else { // other libs, e.g. httpclient
+            supportingFiles.add(new SupportingFile("ApiClient.mustache", clientPackageDir, "ApiClient.cs"));
+            supportingFiles.add(new SupportingFile("IReadableConfiguration.mustache", clientPackageDir, "IReadableConfiguration.cs"));
+            supportingFiles.add(new SupportingFile("Configuration.mustache", clientPackageDir, "Configuration.cs"));
+        }
         supportingFiles.add(new SupportingFile("IApiAccessor.mustache", clientPackageDir, "IApiAccessor.cs"));
-        supportingFiles.add(new SupportingFile("Configuration.mustache", clientPackageDir, "Configuration.cs"));
-        supportingFiles.add(new SupportingFile("ApiClient.mustache", clientPackageDir, "ApiClient.cs"));
         supportingFiles.add(new SupportingFile("ApiException.mustache", clientPackageDir, "ApiException.cs"));
         supportingFiles.add(new SupportingFile("ApiResponse.mustache", clientPackageDir, "ApiResponse.cs"));
         supportingFiles.add(new SupportingFile("ExceptionFactory.mustache", clientPackageDir, "ExceptionFactory.cs"));
@@ -1016,8 +1039,6 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
             supportingFiles.add(new SupportingFile("RetryConfiguration.mustache", clientPackageDir, "RetryConfiguration.cs"));
         }
 
-        supportingFiles.add(new SupportingFile("IReadableConfiguration.mustache",
-                clientPackageDir, "IReadableConfiguration.cs"));
         supportingFiles.add(new SupportingFile("GlobalConfiguration.mustache",
                 clientPackageDir, "GlobalConfiguration.cs"));
 
@@ -1184,6 +1205,10 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
 
     public void setSupportsDateOnly(Boolean supportsDateOnly) {
         this.supportsDateOnly = supportsDateOnly;
+    }
+
+    public void setUseIntForTimeout(Boolean useIntForTimeout) {
+        this.useIntForTimeout = useIntForTimeout;
     }
 
     public void setSupportsRetry(Boolean supportsRetry) {
@@ -1402,11 +1427,9 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
         };
         static FrameworkStrategy NETFRAMEWORK_4_8 = new FrameworkStrategy("net48", ".NET Framework 4.8", "net48", Boolean.FALSE) {
         };
-        static FrameworkStrategy NET_6_0 = new FrameworkStrategy("net6.0", ".NET 6.0 (End of Support 12 November 2024)", "net6.0", Boolean.FALSE) {
+        static FrameworkStrategy NET_8_0 = new FrameworkStrategy("net8.0", ".NET 8.0 (End of Support 10 November 2026)", "net8.0", Boolean.FALSE) {
         };
-        static FrameworkStrategy NET_7_0 = new FrameworkStrategy("net7.0", ".NET 7.0", "net7.0", Boolean.FALSE) {
-        };
-        static FrameworkStrategy NET_8_0 = new FrameworkStrategy("net8.0", ".NET 8.0", "net8.0", Boolean.FALSE) {
+        static FrameworkStrategy NET_9_0 = new FrameworkStrategy("net9.0", ".NET 9.0 (End of Support 12 May 2026)", "net9.0", Boolean.FALSE) {
         };
         protected String name;
         protected String description;
@@ -1526,6 +1549,18 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
                 properties.put(NET_60_OR_LATER, true);
                 properties.put(NET_70_OR_LATER, true);
                 properties.put(NET_80_OR_LATER, true);
+            } else if (strategies.stream().anyMatch(p -> "net9.0".equals(p.name))) {
+                properties.put(NET_STANDARD_14_OR_LATER, true);
+                properties.put(NET_STANDARD_15_OR_LATER, true);
+                properties.put(NET_STANDARD_16_OR_LATER, true);
+                properties.put(NET_STANDARD_20_OR_LATER, true);
+                properties.put(NET_STANDARD_21_OR_LATER, true);
+                properties.put(NET_47_OR_LATER, true);
+                properties.put(NET_48_OR_LATER, true);
+                properties.put(NET_60_OR_LATER, true);
+                properties.put(NET_70_OR_LATER, true);
+                properties.put(NET_80_OR_LATER, true);
+                properties.put(NET_90_OR_LATER, true);
             } else {
                 throw new RuntimeException("Unhandled case");
             }
@@ -1701,7 +1736,7 @@ public class CSharpClientCodegen extends AbstractCSharpCodegen {
             addAdditionPropertiesToCodeGenModel(m, schema);
         } else {
             m.setIsMap(false);
-            if (ModelUtils.isFreeFormObject(schema)) {
+            if (ModelUtils.isFreeFormObject(schema, openAPI)) {
                 // non-composed object type with no properties + additionalProperties
                 // additionalProperties must be null, ObjectSchema, or empty Schema
                 addAdditionPropertiesToCodeGenModel(m, schema);

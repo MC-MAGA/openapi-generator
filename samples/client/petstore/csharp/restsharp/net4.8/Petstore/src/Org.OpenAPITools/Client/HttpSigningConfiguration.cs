@@ -356,7 +356,7 @@ namespace Org.OpenAPITools.Client
         }
 
         /// <summary>
-        /// Convert ANS1 format to DER format. Not recommended to use because it generate inavlid signature occationally.
+        /// Convert ANS1 format to DER format. Not recommended to use because it generate invalid signature occasionally.
         /// </summary>
         /// <param name="signedBytes"></param>
         /// <returns></returns>
@@ -465,7 +465,7 @@ namespace Org.OpenAPITools.Client
                 binkey = Convert.FromBase64String(pvkstr);
                 return binkey;
             }
-            catch (System.FormatException)
+            catch (global::System.FormatException)
             {
                 StringReader str = new StringReader(pvkstr);
 
@@ -495,7 +495,7 @@ namespace Org.OpenAPITools.Client
                 {   //should have b64 encrypted RSA key now
                     binkey = Convert.FromBase64String(encryptedstr);
                 }
-                catch (System.FormatException)
+                catch (global::System.FormatException)
                 {   //data is not in base64 format
                     return null;
                 }
