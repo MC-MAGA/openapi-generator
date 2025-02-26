@@ -111,7 +111,6 @@ public class TypeScriptClientCodegen extends AbstractTypeScriptClientCodegen imp
                 // Typescript reserved words
                 "constructor"));
 
-        typeMapping.put("List", "Array");
         typeMapping.put("object", "any");
         typeMapping.put("DateTime", "Date");
 
@@ -141,6 +140,7 @@ public class TypeScriptClientCodegen extends AbstractTypeScriptClientCodegen imp
         supportModelPropertyNaming(CodegenConstants.MODEL_PROPERTY_NAMING_TYPE.camelCase);
 
         // Git
+        supportingFiles.add(new SupportingFile(".gitattributes.mustache", "", ".gitattributes"));
         supportingFiles.add(new SupportingFile(".gitignore.mustache", "", ".gitignore"));
         supportingFiles.add(new SupportingFile("git_push.sh.mustache", "", "git_push.sh"));
 
@@ -311,9 +311,25 @@ public class TypeScriptClientCodegen extends AbstractTypeScriptClientCodegen imp
 
         if (enumName.matches("\\d.*")) { // starts with number
             return "_" + enumName;
-        } else {
-            return enumName;
         }
+
+        if (enumName.isEmpty()) {
+            // After sanitizing *all* characters (e.g. multibyte characters), the var name becomes an empty string.
+            // An empty string would cause a syntax error, so this code attempts to re-sanitize the name using another sanitizer that allows a wider variety of characters.
+            // For backward compatibility, this additional sanitization is only applied if the original sanitized name is empty.
+            final String sanitized = sanitizeNameForTypeScriptSymbol(name);
+            if (sanitized.isEmpty()) {
+                // After re-sanitizing, this pads a pseudo var name ("STRING") if still the name is empty.
+                return "STRING";
+            }
+            return "_" + sanitized;
+        }
+
+        return enumName;
+    }
+
+    private String sanitizeNameForTypeScriptSymbol(String name) {
+        return sanitizeName(name, "[^\\p{L}\\p{Nd}\\$_]");
     }
 
     private String getNameWithEnumPropertyNaming(String name) {
@@ -353,6 +369,16 @@ public class TypeScriptClientCodegen extends AbstractTypeScriptClientCodegen imp
                                 .replace(var.enumName, cm.classname + var.enumName);
                     }
                 }
+            }
+            if (!cm.oneOf.isEmpty()) {
+                // For oneOfs only import $refs within the oneOf
+                TreeSet<String> oneOfRefs = new TreeSet<>();
+                for (String im : cm.imports) {
+                    if (cm.oneOf.contains(im)) {
+                        oneOfRefs.add(im);
+                    }
+                }
+                cm.imports = oneOfRefs;
             }
         }
         for (ModelMap mo : models) {
@@ -458,12 +484,8 @@ public class TypeScriptClientCodegen extends AbstractTypeScriptClientCodegen imp
 
     @Override
     public String getTypeDeclaration(Schema p) {
-        Schema inner;
-        if (ModelUtils.isArraySchema(p)) {
-            inner = ModelUtils.getSchemaItems(p);
-            return this.getSchemaType(p) + "<" + this.getTypeDeclaration(unaliasSchema(inner)) + ">";
-        } else if (ModelUtils.isMapSchema(p)) {
-            inner = getSchemaAdditionalProperties(p);
+        if (ModelUtils.isMapSchema(p)) {
+            Schema<?> inner = getSchemaAdditionalProperties(p);
             String postfix = "";
             if (Boolean.TRUE.equals(inner.getNullable())) {
                 postfix = " | null";

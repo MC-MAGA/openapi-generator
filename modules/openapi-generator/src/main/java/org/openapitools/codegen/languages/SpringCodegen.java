@@ -113,6 +113,7 @@ public class SpringCodegen extends AbstractJavaCodegen
     public static final String REQUEST_MAPPING_OPTION = "requestMappingMode";
     public static final String USE_REQUEST_MAPPING_ON_CONTROLLER = "useRequestMappingOnController";
     public static final String USE_REQUEST_MAPPING_ON_INTERFACE = "useRequestMappingOnInterface";
+    public static final String USE_SEALED = "useSealed";
 
     @Getter public enum RequestMappingMode {
         api_interface("Generate the @RequestMapping annotation on the generated Api Interface."),
@@ -151,6 +152,7 @@ public class SpringCodegen extends AbstractJavaCodegen
     protected boolean performBeanValidation = false;
     @Setter protected boolean apiFirst = false;
     protected boolean useOptional = false;
+    @Setter protected boolean useSealed = false;
     @Setter protected boolean virtualService = false;
     @Setter protected boolean hateoas = false;
     @Setter protected boolean returnSuccessCode = false;
@@ -229,6 +231,8 @@ public class SpringCodegen extends AbstractJavaCodegen
                 .add(CliOption.newBoolean(USE_BEANVALIDATION, "Use BeanValidation API annotations", useBeanValidation));
         cliOptions.add(CliOption.newBoolean(PERFORM_BEANVALIDATION,
                 "Use Bean Validation Impl. to perform BeanValidation", performBeanValidation));
+        cliOptions.add(CliOption.newBoolean(USE_SEALED,
+                "Whether to generate sealed model interfaces and classes"));
         cliOptions.add(CliOption.newBoolean(API_FIRST,
                 "Generate the API from the OAI spec at server compile time (API first approach)", apiFirst));
         cliOptions
@@ -423,6 +427,7 @@ public class SpringCodegen extends AbstractJavaCodegen
         convertPropertyToBooleanAndWriteBack(GENERATE_CONSTRUCTOR_WITH_REQUIRED_ARGS, value -> this.generatedConstructorWithRequiredArgs=value);
         convertPropertyToBooleanAndWriteBack(RETURN_SUCCESS_CODE, this::setReturnSuccessCode);
         convertPropertyToBooleanAndWriteBack(USE_SWAGGER_UI, this::setUseSwaggerUI);
+        convertPropertyToBooleanAndWriteBack(USE_SEALED, this::setUseSealed);
         if (getDocumentationProvider().equals(DocumentationProvider.NONE)) {
             this.setUseSwaggerUI(false);
         }
@@ -446,6 +451,7 @@ public class SpringCodegen extends AbstractJavaCodegen
         convertPropertyToStringAndWriteBack(RESOURCE_FOLDER, this::setResourceFolder);
 
         typeMapping.put("file", "org.springframework.core.io.Resource");
+        importMapping.put("Nullable", "org.springframework.lang.Nullable");
         importMapping.put("org.springframework.core.io.Resource", "org.springframework.core.io.Resource");
         importMapping.put("DateTimeFormat", "org.springframework.format.annotation.DateTimeFormat");
         importMapping.put("ApiIgnore", "springfox.documentation.annotations.ApiIgnore");
@@ -952,6 +958,11 @@ public class SpringCodegen extends AbstractJavaCodegen
         if (model.getVendorExtensions().containsKey("x-jackson-optional-nullable-helpers")) {
             model.imports.add("Arrays");
         }
+
+        // to prevent inheritors (JavaCamelServerCodegen etc.) mistakenly use it
+        if (getName().contains("spring")) {
+            model.imports.add("Nullable");
+        }
     }
 
     @Override
@@ -1073,7 +1084,7 @@ public class SpringCodegen extends AbstractJavaCodegen
         if (argObj instanceof List) {
             List<String> provideArgs = (List<String>) argObj;
             if (!provideArgs.isEmpty()) {
-                List<String> formatedArgs = new ArrayList<>();
+                List<String> formattedArgs = new ArrayList<>();
                 for (String oneArg : provideArgs) {
                     if (StringUtils.isNotEmpty(oneArg)) {
                         String regexp = "(?<AnnotationTag>@)?(?<ClassPath>(?<PackageName>(\\w+\\.)*)(?<ClassName>\\w+))(?<Params>\\(.*?\\))?\\s?";
@@ -1095,10 +1106,10 @@ public class SpringCodegen extends AbstractJavaCodegen
                         }
                         String newArg = String.join(" ", newArgs);
                         LOGGER.trace("new arg {} {}", newArg);
-                        formatedArgs.add(newArg);
+                        formattedArgs.add(newArg);
                     }
                 }
-                operation.getExtensions().put("x-spring-provide-args", formatedArgs);
+                operation.getExtensions().put("x-spring-provide-args", formattedArgs);
             }
         }
         return provideArgsClassSet;

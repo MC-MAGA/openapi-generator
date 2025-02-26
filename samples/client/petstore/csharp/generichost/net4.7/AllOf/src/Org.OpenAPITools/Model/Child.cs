@@ -50,7 +50,7 @@ namespace Org.OpenAPITools.Model
         /// Used to track the state of Age
         /// </summary>
         [JsonIgnore]
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
         public Option<int?> AgeOption { get; private set; }
 
         /// <summary>
@@ -60,17 +60,10 @@ namespace Org.OpenAPITools.Model
         public int? Age { get { return this.AgeOption; } set { this.AgeOption = new Option<int?>(value); } }
 
         /// <summary>
-        /// The discriminator
-        /// </summary>
-        [JsonIgnore]
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-        public new string Type { get; } = "Child";
-
-        /// <summary>
         /// Used to track the state of BoosterSeat
         /// </summary>
         [JsonIgnore]
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
         public Option<bool?> BoosterSeatOption { get; private set; }
 
         /// <summary>

@@ -80,8 +80,8 @@ public class AbstractJavaCodegenTest {
      */
     @Test
     public void toEnumVarNameShouldNotResultInSingleUnderscore() {
-        Assert.assertEquals(codegen.toEnumVarName(" ", "String"), "SPACE");
-        Assert.assertEquals(codegen.toEnumVarName("==", "String"), "u");
+        Assert.assertNotEquals(codegen.toEnumVarName(" ", "String"), "_");
+        Assert.assertNotEquals(codegen.toEnumVarName("==", "String"), "_");
     }
 
     @Test
@@ -954,5 +954,22 @@ public class AbstractJavaCodegenTest {
         schema = new ArraySchema().items(new Schema<>().type("integer").maximum(BigDecimal.TEN));
         defaultValue = codegen.getTypeDeclaration(schema);
         Assert.assertEquals(defaultValue, "List<@Max(10)Integer>");
+    }
+
+    @Test
+    public void removeAnnotationsTest() {
+        Assert.assertEquals(codegen.removeAnnotations("@Min(0) @Max(10)Integer"), "Integer");
+        Assert.assertEquals(codegen.removeAnnotations("@Pattern(regexp = \"^[a-z]$\")String"), "String");
+        Assert.assertEquals(codegen.removeAnnotations("List<@Min(0) @Max(10)Integer>"), "List<Integer>");
+        Assert.assertEquals(codegen.removeAnnotations("List<@Pattern(regexp = \"^[a-z]$\")String>"), "List<String>");
+        Assert.assertEquals(codegen.removeAnnotations("List<@Valid Pet>"), "List<Pet>");
+    }
+
+    @Test(description = "test generated example values for string properties")
+    public void testGeneratedExampleValues() {
+        final OpenAPI openAPI = FLATTENED_SPEC.get("3_0/spring/date-time-parameter-types-for-testing");
+        codegen.setOpenAPI(openAPI);
+        DateSchema dateSchema = (DateSchema) openAPI.getPaths().get("/thingy/{date}").getPost().getParameters().get(0).getSchema();
+        assertThat(codegen.escapeQuotationMark(codegen.toExampleValue(dateSchema))).isEqualTo("2021-01-01");
     }
 }
